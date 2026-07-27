@@ -1,0 +1,26 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+*.egg
+
+# --- Entornos virtuales ---
+.venv/
+venv/
+env/
+
+# --- APIHealer: snapshots locales del contrato, no van al repo ---
+.apihealer/
+
+# --- Editores / IDE ---
+.vs/
+.vscode/
+.idea/
+*.swp
+
+# --- Sistema operativo ---
+.DS_Store
+Thumbs.db
