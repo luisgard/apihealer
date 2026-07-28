@@ -1,0 +1,27 @@
+# --- Python (the apihealer tool) ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# --- APIHealer: commit contract baselines, ignore transient downloads ---
+.apihealer/**/contract_incoming.json
+*-report.md
+verification-report.md
+verification-report.json
+
+# --- .NET (the testbench) ---
+bin/
+obj/
+*.user
+testbench/Client.NSwag/GeneratedClient.cs
+
+# --- Editors / OS ---
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

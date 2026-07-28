@@ -13,7 +13,9 @@ venv/
 env/
 
 # --- APIHealer: snapshots locales del contrato, no van al repo ---
-.apihealer/
+# --- APIHealer: commit contract baselines (.apihealer/<name>/contract.json),
+#     but ignore transient download artifacts ---
+.apihealer/**/contract_incoming.json
 
 # --- Editores / IDE ---
 .vs/
