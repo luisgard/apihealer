@@ -1,0 +1,41 @@
+{
+  "openapi": "3.0.1",
+  "info": { "title": "OrdersApi", "version": "1.0" },
+  "paths": {
+    "/orders/{id}": {
+      "get": {
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer", "format": "int32" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/OrderV2" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "OrderV2": {
+        "type": "object",
+        "properties": {
+          "orderId": { "type": "integer", "format": "int32" },
+          "customer": { "$ref": "#/components/schemas/CustomerRef" },
+          "state": { "type": "string" }
+        }
+      },
+      "CustomerRef": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "format": "int32" }
+        }
+      }
+    }
+  }
+}
