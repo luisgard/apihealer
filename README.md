@@ -1,78 +1,97 @@
 # APIHealer
 
-**Automated API contract remediation for API consumers.** When an API you
-consume changes -- a third party's or another team's -- APIHealer detects the
-breaking change, remediates the code that depends on it, and reports *with what
-level of evidence* the fix can be trusted.
+**A verification-aware API contract remediation tool.**
 
-> **Python orchestrates; native tools do the work; the compiler verifies; the
-> LLM only proposes.**
+When an API you consume changes, APIHealer detects the breaking change, proposes or applies a consumer-side remediation,
+and — the part that makes it different — reports *with what level of evidence*
+that remediation can be trusted. It doesn't just sell
+"AI fixed it"; it tells you how much it can actually prove.
 
-This is not "AI that magically fixes code." It's a contract-driven remediation
-engine that uses deterministic tooling where it exists (OpenAPI diffing, client
-regeneration, the compiler) and treats the LLM as an assistant whose output is
-verified, not trusted blindly.
+> Python orchestrates; native tools do the work; the compiler verifies; the LLM
+> only proposes.
 
 ---
 
-## Repository layout
+## Overview
 
-This repo contains two things:
+The repository is intentionally split into three parts:
 
 | Folder | What it is |
 |---|---|
-| [`apihealer/`](./apihealer) | **The tool.** A Python CLI that detects contract changes and remediates consuming code. Start here. |
-| [`testbench/`](./testbench) | **A runnable demo.** Small .NET projects (a provider API + a generated client + a manual client) that let you see the tool work end to end, both paths. |
+| [`apihealer/`](./apihealer) | The tool. Runs as a local **web UI** (easy, hands-on) or a **CLI** (automation / CI). |
+| [`testbench/`](./testbench) | A runnable demo: small .NET projects that exercise both the generated and manual paths. |
+| [`docs/`](./docs) | Deep dives: [Verification](./docs/Verification.md), [Architecture](./docs/Architecture.md), [How it works](./docs/How-it-works.md). |
 
-```text
-.
-├── apihealer/          # the tool (Python)
-│   ├── apihealer/      # package: core + language adapters
-│   ├── README.md       # full documentation, architecture, verification model
-│   └── pyproject.toml
-└── testbench/          # local .NET projects to try it against
-    ├── OrdersApi/      # provider API (v1/v2 contracts)
-    ├── Client.NSwag/   # generated client (reliable path)
-    ├── Client.Manual/  # hand-written client (honest, lower-confidence path)
-    └── contracts/      # captured swagger-v1.json / swagger-v2.json
+## Example
+
+A provider reshapes `GET /orders/{id}` — `customerId`/`status` become a nested
+`customer.id` and a renamed `state`. For a generated client, APIHealer
+regenerates, the compiler flags the broken lines, and the fix comes back
+verified:
+
+```csharp
+// before
+var customerId = order.CustomerId;
+var status     = order.Status;
+
+// after (APIHealer)
+var customerId = order.Customer?.Id;   // nested now — note the null-safe access
+var status     = order.State;          // renamed
 ```
 
----
-
-## The core idea in one table
-
-Not every fix earns the same confidence. The client type decides the strategy,
-the evidence behind the result, and what can still be wrong afterward:
-
-| Client type | Strategy | Verification | Confidence | What can still be wrong |
-|---|---|---|---|---|
-| Generated (NSwag/Kiota/openapi-generator) | Regenerate + build | Compiler verified | High (type compatibility) | Runtime / business behavior |
-| Manual (hand-written / Refit) | LLM-assisted remediation | Build/syntax only | Medium / Low | Contract semantics -- may compile and still be wrong |
-| None / Unknown | No automatic changes | Human review | n/a | Everything -- nothing was changed |
-
-Every run produces a structured `VerificationReport` (evidence + confidence +
-residual risks), which can be emitted as Markdown or JSON for CI/CD.
-
----
+Note the `?.` — the fix accounts for the newly nested object being null, not
+just the rename. Then it recompiles to confirm, and reports **build**-level
+verification at high confidence, with the residual risks still listed.
 
 ## Quick start
 
 ```bash
-# 1. install the tool
 cd apihealer
 pip install -e .
 
-# 2. see it work against the included demo (see testbench/README.md for the full walkthrough)
-cd ../testbench
-# run the provider API, point APIHealer at its swagger, switch the contract, re-run
+# local, hands-on (opens in your browser):
+python -m apihealer.web
+
+# automation / CI:
+apihealer --path . --name orders --swagger-url <url> --apply --report md
 ```
 
-- Full tool documentation, architecture and design principles:
-  **[apihealer/README.md](./apihealer/README.md)**
-- Step-by-step demo of both the generated and manual paths:
-  **[testbench/README.md](./testbench/README.md)**
+The web UI is the friendliest way to try it. The CLI is what you wire into a
+pipeline. Same engine underneath. Full commands in
+[apihealer/README.md](./apihealer/README.md); a guided demo in
+[testbench/README.md](./testbench/README.md).
 
----
+![APIHealer web UI](./docs/images/web-ui.png)
+
+## Verification
+
+Not every fix earns the same confidence. The client type decides the strategy,
+the evidence behind the result, and what can still be wrong afterward:
+
+| Client type | Verification | Confidence | What can still be wrong |
+|---|---|---|---|
+| Generated (NSwag/Kiota) | Compiler verified | High | Runtime / business behavior |
+| Manual (hand-written) | Build/syntax only | Medium / Low | Contract semantics — may compile and still be wrong |
+| None / Unknown | Human review | n/a | Everything — nothing was changed |
+
+Every run produces a structured `VerificationReport` (evidence + confidence +
+residual risks). The full model is in [docs/Verification.md](./docs/Verification.md).
+
+![A remediation result with confidence, evidence and residual risks](./docs/images/web-ui-result.png)
+
+## Architecture
+
+Two halves with a clean boundary: a language-agnostic **core** (contract diff,
+orchestration) and pluggable **adapters** (the .NET adapter is a thin
+coordinator over a classifier, two fix strategies, and a toolchain). Two axes
+grow without touching the core: language adapters and contract sources. Details
+in [docs/Architecture.md](./docs/Architecture.md).
+
+## Roadmap
+
+- Azure DevOps / GitHub PR automation from the applied fix.
+- More language adapters.
+- Additional contract sources.
 
 ## Requirements
 
@@ -83,7 +102,6 @@ cd ../testbench
 
 ## Status
 
-MVP, working end to end for the generated path, with an honest lower-confidence
-path for manual clients. Per-API baselines are committed to the repo so it works
-the same locally and in ephemeral CI runners. Next milestone: a GitHub Action /
-Azure DevOps pipeline that opens the PR from the applied fix.
+MVP. Working end to end for the generated path, with an honest lower-confidence
+path for manual clients. Validated on a real .NET project; per-API baselines are
+committed so it works the same locally and in CI.
