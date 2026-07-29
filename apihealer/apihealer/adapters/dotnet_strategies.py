@@ -16,6 +16,13 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from ..core.confidence import (
+    score_generated_clean,
+    score_generated_verified,
+    score_manual_inferred_build,
+    score_manual_suggested,
+    score_build_failed,
+)
 from ..core.file_tx import FileTransaction
 from ..core.llm import build_fix_prompt
 from .base import (
@@ -107,13 +114,15 @@ class GeneratedFixStrategy(FixStrategy):
             )
 
         if build.ok:
+            sc = score_generated_clean()
             return RemediationResult(
                 files_changed=["(client regenerated)"],
                 summary=(
                     "The client was regenerated and the project compiles with no "
                     "additional changes.\n\nContract changes:\n" + ctx.breaking_changes
                 ),
-                confidence=0.9,
+                confidence=sc.total,
+                confidence_factors=sc.breakdown(),
                 applied=True,
                 verification=verification_report(
                     VerificationKind.BUILD,
@@ -155,6 +164,7 @@ class GeneratedFixStrategy(FixStrategy):
 
         verify = self.tc.build(ctx.project_root)
         if verify is not None and verify.ok:
+            sc = score_generated_verified()
             return RemediationResult(
                 files_changed=fixed["files"],
                 summary=(
@@ -162,7 +172,8 @@ class GeneratedFixStrategy(FixStrategy):
                     "project COMPILES after the fix. Review the diff before "
                     "committing.\n\nContract changes:\n" + ctx.breaking_changes
                 ),
-                confidence=0.85,
+                confidence=sc.total,
+                confidence_factors=sc.breakdown(),
                 applied=True,
                 verification=verification_report(
                     VerificationKind.BUILD,
@@ -290,23 +301,30 @@ class ManualFixStrategy(FixStrategy):
 
         build = self.tc.build(ctx.project_root)
         if build is None:
-            note, conf, ver = "Did not compile (dotnet missing); syntax not even verified.", 0.35, VerificationKind.NONE
+            note = "Applied an inferred remediation, but dotnet is missing so it wasn't compiled."
+            sc, ver, evidence = score_manual_suggested(), VerificationKind.NONE, []
         elif build.ok:
-            note, conf, ver = "The project compiles after the change (syntax OK).", 0.5, VerificationKind.SYNTAX_ONLY
+            note = "Applied an inferred remediation and verified it compiles."
+            sc, ver = score_manual_inferred_build(), VerificationKind.INFERRED_BUILD
+            evidence = [
+                "Inferred the new shape from the contract diff and applied it.",
+                "dotnet build passed: types and references are consistent.",
+            ]
         else:
-            note, conf, ver = "The project does NOT compile after the change: review carefully.", 0.2, VerificationKind.BUILD_FAILED
+            note = "Applied an inferred remediation, but the project does NOT compile: review carefully."
+            sc, ver, evidence = score_build_failed(), VerificationKind.BUILD_FAILED, []
 
         return RemediationResult(
             files_changed=fixed["files"],
             summary=(
-                "Applied a proposal based on the contract diff and the code found. "
-                + note + self.HONEST_TAIL
+                note + self.HONEST_TAIL
                 + "\n\nContract changes:\n" + ctx.breaking_changes
             ),
-            confidence=conf,
+            confidence=sc.total,
+            confidence_factors=sc.breakdown(),
             applied=True,
-            verification=verification_report(ver),
-            notes=fixed["notes"] + ["Manual client: fix not verified by the compiler."],
+            verification=verification_report(ver, evidence),
+            notes=fixed["notes"] + ["Manual client: the field mapping was inferred, not compiler-proven."],
         )
 
     def _llm_fix_manual(self, project_root, candidates, breaking_changes, llm) -> dict:
@@ -321,7 +339,7 @@ class ManualFixStrategy(FixStrategy):
                 except Exception as exc:
                     notes.append(f"Could not read {p}: {exc}")
                     continue
-                system, user = build_fix_prompt("C#", breaking_changes, no_errors, original)
+                system, user = build_fix_prompt("C#", breaking_changes, no_errors, original, infer=True)
                 resp = llm.complete(system, user)
                 if not resp.ok or not resp.text.strip():
                     notes.append(f"The LLM returned no fix for {p.name}: {resp.error or 'empty'}")

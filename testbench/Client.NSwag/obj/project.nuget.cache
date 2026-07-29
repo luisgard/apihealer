@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "zJCBpyQ4A2c=",
+  "success": true,
+  "projectFilePath": "C:\\repos\\apihealer-project\\testbench\\Client.NSwag\\Client.NSwag.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\lmgc_\\.nuget\\packages\\newtonsoft.json\\13.0.3\\newtonsoft.json.13.0.3.nupkg.sha512",
+    "C:\\Users\\lmgc_\\.nuget\\packages\\nswag.msbuild\\14.1.0\\nswag.msbuild.14.1.0.nupkg.sha512"
+  ],
+  "logs": []
+}

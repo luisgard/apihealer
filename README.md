@@ -2,6 +2,9 @@
 
 **A verification-aware API contract remediation tool.**
 
+> **APIHealer doesn't automate trust. It automates remediation and makes trust
+> measurable.**
+
 When an API you consume changes, APIHealer detects the breaking change, proposes or applies a consumer-side remediation,
 and — the part that makes it different — reports *with what level of evidence*
 that remediation can be trusted. It doesn't just sell
@@ -20,7 +23,7 @@ The repository is intentionally split into three parts:
 |---|---|
 | [`apihealer/`](./apihealer) | The tool. Runs as a local **web UI** (easy, hands-on) or a **CLI** (automation / CI). |
 | [`testbench/`](./testbench) | A runnable demo: small .NET projects that exercise both the generated and manual paths. |
-| [`docs/`](./docs) | Deep dives: [Verification](./docs/Verification.md), [Architecture](./docs/Architecture.md), [How it works](./docs/How-it-works.md). |
+| [`docs/`](./docs) | Deep dives: [Verification](./docs/Verification.md), [Architecture](./docs/Architecture.md), [How it works](./docs/How-it-works.md), [CI/CD](./docs/CI-CD.md). |
 
 ## Example
 
@@ -89,9 +92,12 @@ in [docs/Architecture.md](./docs/Architecture.md).
 
 ## Roadmap
 
-- Azure DevOps / GitHub PR automation from the applied fix.
+- CI/CD adoption in three levels ([docs](./docs/CI-CD.md)): run in any pipeline,
+  publish the report, and prepare a PR from the fix — all working today. Next: a
+  host adapter that opens the PR end to end.
 - More language adapters.
-- Additional contract sources.
+- Additional contract sources, and a three-tier manual path (safe-patch /
+  inferred / human-checkpoint).
 
 ## Requirements
 

@@ -24,8 +24,8 @@ public class OrderService
         var order = await _client.OrdersAsync(id);
 
         // These two reads encode the v1 contract into business logic:
-        var customerId = order.CustomerId;   // v2: moves to order.Customer.Id
-        var status = order.Status;           // v2: renamed to order.State
+        var customerId = order.Customer?.Id;   // v1: order.CustomerId (property removed in v2)
+        var status = order.State;              // v1: order.Status (property removed in v2)
 
         return $"Order {order.OrderId} for customer {customerId} is {status}";
     }

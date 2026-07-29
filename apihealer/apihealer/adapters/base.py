@@ -62,6 +62,7 @@ class VerificationKind(Enum):
     a 0.5 backed by compilation is not the same as an unverified one.
     """
     BUILD = "build"                # recompiled and passed: the fix fits (generated case)
+    INFERRED_BUILD = "inferred_build"  # manual: inferred a change, applied it, and it compiles
     BUILD_FAILED = "build_failed"  # recompiled and did NOT pass
     SYNTAX_ONLY = "syntax_only"    # compiled, but doesn't guarantee the contract (manual)
     NONE = "none"                  # couldn't verify (missing toolchain, etc.)
@@ -113,6 +114,7 @@ class RemediationResult:
     files_changed: list[str] = field(default_factory=list)
     summary: str = ""
     confidence: float = 0.0
+    confidence_factors: list[str] = field(default_factory=list)
     applied: bool = False
     verification: VerificationReport = field(default_factory=VerificationReport)
     notes: list[str] = field(default_factory=list)
@@ -129,6 +131,11 @@ _RISKS_BUILD = [
     "Business logic / validation semantics not checked.",
     "New enum values or nullability changes may alter behavior.",
 ]
+_RISKS_INFERRED = [
+    "The field mapping was INFERRED from the contract diff, not proven.",
+    "Compilation confirms types and references, not that the mapping is semantically right.",
+    "Runtime behavior and validations not checked.",
+]
 _RISKS_SYNTAX_ONLY = [
     "Compilation only proves syntax, not contract semantics.",
     "A manual mapping can compile and still be wrong.",
@@ -143,6 +150,7 @@ def verification_report(level: VerificationKind, evidence: list[str] | None = No
     """Build a VerificationReport with the standard residual risks for `level`."""
     risks = {
         VerificationKind.BUILD: _RISKS_BUILD,
+        VerificationKind.INFERRED_BUILD: _RISKS_INFERRED,
         VerificationKind.SYNTAX_ONLY: _RISKS_SYNTAX_ONLY,
         VerificationKind.BUILD_FAILED: ["The project does not compile after the change."],
         VerificationKind.NONE: _RISKS_NONE,

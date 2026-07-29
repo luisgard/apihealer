@@ -86,20 +86,34 @@ def _run_healer(payload: dict) -> dict:
         store.write_baseline(api_key, incoming.read_bytes())
         incoming.unlink(missing_ok=True)
         base.update({"stage": "baseline",
-                     "message": f"Baseline saved for '{api_key}'. "
-                                "Run again after the API changes."})
+                     "title": "Snapshot saved \u2014 nothing to repair yet",
+                     "message": (
+                         "This is the first time APIHealer sees this API, so it saved a "
+                         "snapshot of the current contract as the baseline. There's nothing "
+                         "to compare against yet. Run it again after the API changes, and "
+                         "it will compare the new contract to this snapshot and repair what "
+                         "breaks.")})
         return base
 
     if not diff.changed:
         incoming.unlink(missing_ok=True)
-        base.update({"stage": "nochange", "message": "No change since last time."})
+        base.update({"stage": "nochange",
+                     "title": "No changes \u2014 nothing to do",
+                     "message": (
+                         "The API's contract is identical to the saved snapshot, so nothing "
+                         "in your code is affected. APIHealer only acts when the contract "
+                         "actually changes.")})
         return base
 
     if not diff.has_breaking:
         store.write_baseline(api_key, incoming.read_bytes())
         incoming.unlink(missing_ok=True)
         base.update({"stage": "nonbreaking",
-                     "message": "The contract changed, but nothing breaking. Baseline updated."})
+                     "title": "Contract changed, but nothing breaking",
+                     "message": (
+                         "The contract changed, but only in ways that don't break your code "
+                         "(for example, a new optional field). APIHealer updated the snapshot "
+                         "and left your code untouched.")})
         return base
 
     # breaking changes -> remediate

@@ -23,6 +23,7 @@ def to_dict(result: RemediationResult) -> dict:
     return {
         "applied": result.applied,
         "confidence": round(result.confidence, 3),
+        "confidence_factors": list(result.confidence_factors),
         "files_changed": list(result.files_changed),
         "verification": {
             "level": v.level.value,
@@ -60,6 +61,12 @@ def to_markdown(result: RemediationResult) -> str:
         lines.append("## Evidence")
         for e in v.evidence:
             lines.append(f"- {e}")
+        lines.append("")
+
+    if result.confidence_factors:
+        lines.append("## Why this confidence")
+        for f in result.confidence_factors:
+            lines.append(f"- `{f}`")
         lines.append("")
 
     if v.remaining_risks:

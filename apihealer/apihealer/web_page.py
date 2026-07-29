@@ -96,8 +96,20 @@ PAGE_HTML = r"""<!DOCTYPE html>
   .verdict .vmain .sub{font-size:14px;color:var(--muted);margin:3px 0 0}
   .badge{display:inline-block;font-size:12px;font-weight:700;padding:3px 10px;
     border-radius:999px;text-transform:uppercase;letter-spacing:.06em}
+  .verdict .vmain .big .badge{font-size:15px;padding:6px 14px;letter-spacing:.02em;
+    text-transform:none}
   .b-teal{background:#e2efeec;color:var(--teal-deep)}
-  .b-high{color:var(--green)} .b-med{color:var(--amber)} .b-low{color:var(--red)}
+  .b-high{background:#e5f1e8;color:var(--green)}
+  .b-med{background:#fbf0da;color:var(--amber)}
+  .b-low{background:#fbe7e3;color:var(--red)}
+  .cnum{display:block;margin-top:6px;font-size:12.5px;color:var(--muted)}
+  .next li{margin:6px 0}
+  .next li::marker{color:var(--teal)}
+  ul.score{list-style:none;padding:0;margin:0}
+  ul.score li{margin:4px 0;padding-left:4px}
+  ul.score li code{font-size:12.5px;background:transparent;padding:0}
+  ul.score li.pos code{color:var(--green)}
+  ul.score li.neg code{color:var(--amber)}
 
   .panel{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px}
   .panel h3{margin:0;padding:11px 16px;font-size:13px;text-transform:uppercase;
@@ -113,6 +125,10 @@ PAGE_HTML = r"""<!DOCTYPE html>
   .note{font-size:14px;padding:12px 15px;border-radius:10px;border:1px solid var(--line);
     background:#fbf7ea}
   .note.err{background:#fbeeeb;border-color:#e6c3bb;color:var(--red)}
+  .statecard{background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:20px 22px;box-shadow:var(--shadow)}
+  .statecard .badge{font-size:15px;padding:6px 14px;letter-spacing:.02em;text-transform:none}
+  .statecard p{margin:12px 0 0;color:var(--muted);font-size:15px;line-height:1.6}
 
   footer{border-top:1px solid var(--line);color:var(--muted);font-size:13px;
     padding:26px 0;margin-top:20px}
@@ -255,15 +271,73 @@ PAGE_HTML = r"""<!DOCTYPE html>
   fetch('/api/providers').then(r=>r.json()).then(d=>{
     const el=document.getElementById('llmhint');
     if(d.providers&&d.providers.length){
-      el.innerHTML='Repair uses your configured LLM ('+d.providers.join(', ')+
-        '). Set <code>APIHEALER_LLM</code> and its key before applying.';
+      el.innerHTML='To apply a fix, APIHealer uses an AI assistant you configure '+
+        '('+d.providers.join(' or ')+'). Detection works without one.';
     }
   }).catch(()=>{});
 
   const $=id=>document.getElementById(id);
   const confClass=p=>p>=0.8?'b-high':(p>=0.45?'b-med':'b-low');
-  const confWord=p=>p>=0.8?'High':(p>=0.45?'Medium':'Low');
   const esc=s=>(s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+  // A clear status label instead of a bare number. The label communicates
+  // *state* ("what happened and what's owed"), not a grade.
+  function statusFor(r){
+    const lvl=(r.verification&&r.verification.level)||'none';
+    const applied=r.applied;
+    if(!applied){
+      return {label:'Preview \u2014 nothing written',
+              tone:'b-med',
+              line:'A change was detected but not applied. This is what APIHealer would do.'};
+    }
+    if(lvl==='build'){
+      return {label:'Verified remediation',
+              tone:'b-high',
+              line:'Generated client: regenerated and recompiled, so the fix fits the new contract\u2019s types.'};
+    }
+    if(lvl==='inferred_build'){
+      return {label:'Inferred remediation',
+              tone:'b-med',
+              line:'Manual client: APIHealer inferred the new shape, applied it, and it compiles. The mapping is a strong inference, not a proven fact \u2014 confirm it.'};
+    }
+    if(lvl==='syntax_only'){
+      return {label:'Suggested remediation',
+              tone:'b-med',
+              line:'Manual client: a change was written but not compiler-verified. Treat it as a suggestion to review.'};
+    }
+    if(lvl==='build_failed'){
+      return {label:'Applied \u2014 does not compile yet',
+              tone:'b-low',
+              line:'The change was written but the project still doesn\u2019t build. Needs a human.'};
+    }
+    return {label:'Applied \u2014 unverified',
+            tone:'b-low',
+            line:'The change was written but could not be verified. Treat as unproven.'};
+  }
+
+  // Actionable next steps, tuned to how much was proven.
+  function nextSteps(r){
+    const lvl=(r.verification&&r.verification.level)||'none';
+    if(!r.applied){
+      return ['Re-run with \u201cApply the fix\u201d checked to write the change.'];
+    }
+    if(lvl==='build'){
+      return ['Read the diff of the changed file(s).',
+              'Run your test suite to confirm runtime behavior.'];
+    }
+    if(lvl==='inferred_build'){
+      return ['Confirm the inferred field mapping is correct (e.g. that the new nested field really is the old one).',
+              'Read the diff \u2014 APIHealer created/renamed types from the contract shape.',
+              'Run your tests: compiling proves types, not the semantic mapping.'];
+    }
+    if(lvl==='syntax_only'){
+      return ['Open the changed file and check the mapping matches the new contract.',
+              'Run your tests \u2014 compiling did not verify the contract semantics.',
+              'Pay attention to the residual risks listed below.'];
+    }
+    return ['Review the changed file(s) carefully before committing.',
+            'Fix any remaining build errors, then re-run.'];
+  }
 
   function panel(title,inner,cls){
     return '<div class="panel"><h3>'+title+'</h3><div class="body '+(cls||'')+'">'+inner+'</div></div>';
@@ -284,24 +358,37 @@ PAGE_HTML = r"""<!DOCTYPE html>
       '</b>. '+esc((d.client_reasons||[]).join(' '))+'</div>';
 
     if(d.stage==='baseline'||d.stage==='nochange'||d.stage==='nonbreaking'){
-      box.innerHTML=head+'<div class="note" style="margin-top:12px">'+esc(d.message)+'</div>';
+      const tone=d.stage==='baseline'?'b-teal':'b-high';
+      box.innerHTML=
+        '<div class="statecard"><span class="badge '+tone+'">'+
+        esc(d.title||'Done')+'</span><p>'+esc(d.message)+'</p></div>';
       box.scrollIntoView({behavior:'smooth',block:'start'}); return;
     }
 
     // remediated
     const r=d.result, v=r.verification, p=r.confidence||0;
-    const dial='<div class="dial '+confClass(p)+'" style="--p:'+Math.round(p*100)+
-      '"><span>'+Math.round(p*100)+'%</span></div>';
-    const applied=r.applied?'Applied to your files':'Preview only (not written)';
+    const st=statusFor(r), pct=Math.round(p*100);
+    const dial='<div class="dial '+confClass(p)+'" style="--p:'+pct+
+      '"><span>'+pct+'%</span></div>';
     const verdict='<div class="verdict">'+dial+
-      '<div class="vmain"><p class="big">'+confWord(p)+' confidence &mdash; <span class="mono">'+
-      esc(v.level)+'</span></p><p class="sub">'+applied+
-      (d.had_llm?'':' &middot; no LLM configured, so this is detection only')+
-      '</p></div></div>';
+      '<div class="vmain"><p class="big"><span class="badge '+st.tone+'">'+
+      esc(st.label)+'</span></p><p class="sub">'+esc(st.line)+
+      ' <span class="cnum">Confidence '+pct+'% &middot; '+esc(v.level)+
+      (d.had_llm?'':' &middot; no LLM configured, detection only')+'</span></p></div></div>';
 
     let body=head+verdict;
+    // Actionable next steps -- turns "did it work?" into "here's what to do".
+    body+=panel('Next: what to check',list(nextSteps(r),'next'));
+    // Why this confidence -- the number is a sum of named factors, not magic.
+    if(r.confidence_factors&&r.confidence_factors.length){
+      body+=panel('Why this confidence',
+        '<ul class="score">'+r.confidence_factors.map(f=>{
+          const pos=!f.trim().startsWith('-');
+          return '<li class="'+(pos?'pos':'neg')+'"><code>'+esc(f)+'</code></li>';
+        }).join('')+'</ul>');
+    }
     if(r.files_changed&&r.files_changed.length){
-      body+=panel('Files',(r.files_changed.map(f=>'<code>'+esc(f)+'</code>').join(' ')),'files');
+      body+=panel('Files changed',(r.files_changed.map(f=>'<code>'+esc(f)+'</code>').join(' ')),'files');
     }
     if(v.evidence&&v.evidence.length) body+=panel('Evidence',list(v.evidence,'evi'));
     if(v.remaining_risks&&v.remaining_risks.length)

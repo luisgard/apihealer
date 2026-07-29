@@ -85,6 +85,25 @@ def run(argv: list[str] | None = None) -> int:
         "--report-out",
         help="Write the report to this path instead of stdout.",
     )
+    parser.add_argument(
+        "--open-pr",
+        action="store_true",
+        help="After applying a fix, create a git branch and commit it, and "
+             "print the PR title/body and the command to push and open the PR.",
+    )
+    parser.add_argument(
+        "--pr-out",
+        help="Write the generated PR body (Markdown) to this path (e.g. pr-body.md).",
+    )
+    parser.add_argument(
+        "--apply-policy",
+        choices=["verified", "safe", "permissive"],
+        default="safe",
+        help="Which verification levels are acceptable as an applied fix in CI. "
+             "verified=only compiler-verified (build); safe=also inferred_build; "
+             "permissive=also syntax_only (lower evidence). Decides the exit "
+             "code; the fix is always reported. Default: safe.",
+    )
     args = parser.parse_args(argv)
 
     print("=" * 60)
@@ -246,7 +265,46 @@ def run(argv: list[str] | None = None) -> int:
         else:
             print("\n" + rendered)
 
-    return 0
+    # Optional Level-3 PR preparation: branch + commit + PR body. Host-agnostic;
+    # APIHealer prepares everything and leaves the push to you (or a pipeline
+    # with credentials).
+    if args.open_pr or args.pr_out:
+        from .core import pr as pr_mod
+        if not proposal.applied:
+            _info("Skipping PR: no fix was applied (run with --apply).")
+        else:
+            prep = pr_mod.prepare_pr(project_root, api_key, proposal)
+            if args.pr_out:
+                pout = Path(args.pr_out).expanduser()
+                pout.parent.mkdir(parents=True, exist_ok=True)
+                pout.write_text(prep.body, encoding="utf-8")
+                _info(f"PR body written to {pout}")
+            for n in prep.notes:
+                _info(n)
+            if args.open_pr:
+                print("\n--- PR title ---")
+                print(prep.title)
+                print("\n--- Next: push and open the PR ---")
+                print(pr_mod.pr_push_hint(prep.branch))
+
+    # CI contract: policy gate + exit code, based on the verification LEVEL
+    # (not the confidence number -- confidence explains, the level decides).
+    from .core.gates import policy_allows
+    from .core.exit_codes import exit_code_for, EXIT_UNREMEDIATED, EXIT_VERIFICATION_FAILED
+    level = proposal.verification.level.value
+    allowed = policy_allows(args.apply_policy, level)
+    code = exit_code_for(
+        applied=proposal.applied,
+        level=level,
+        breaking=True,  # we only reach here past the breaking-change gate
+        allowed_by_policy=allowed,
+    )
+    if code == EXIT_UNREMEDIATED:
+        _info(f"Policy '{args.apply_policy}' does not accept a '{level}' remediation as "
+              "an applied fix; treating this run as a report. Exit code 2.")
+    elif code == EXIT_VERIFICATION_FAILED:
+        _info("The applied change does not compile (build_failed). Exit code 3.")
+    return code
 
 
 def main() -> None:
